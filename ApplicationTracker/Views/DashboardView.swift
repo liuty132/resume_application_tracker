@@ -194,8 +194,7 @@ struct DashboardView: View {
                 .frame(width: 8, height: 8)
 
             VStack(alignment: .leading, spacing: 2) {
-                // Show company+title extracted from URL hostname as a best-effort placeholder
-                Text(hostDisplay(for: job.url))
+                Text(pendingJobDisplayTitle(job))
                     .font(.system(size: 13, weight: .semibold))
                     .lineLimit(1)
                 Text(job.url)
@@ -345,6 +344,15 @@ struct DashboardView: View {
     }
 
     // MARK: - Helpers
+
+    private func pendingJobDisplayTitle(_ job: PendingJob) -> String {
+        switch (job.company, job.jobTitle) {
+        case let (c?, t?): return "\(c) — \(t)"
+        case let (c?, nil): return c
+        case let (nil, t?): return t
+        default: return hostDisplay(for: job.url)
+        }
+    }
 
     private func hostDisplay(for urlString: String) -> String {
         if let url = URL(string: urlString), let host = url.host {

@@ -42,11 +42,12 @@ struct PendingJobRow: View {
                             .font(.caption2)
                             .labelStyle(.titleAndIcon)
                             .foregroundStyle(.green)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 7)
+                            .background(RoundedRectangle(cornerRadius: 6).fill(Color.primary.opacity(isApplyHovered ? 0.1 : 0)))
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 7)
-                    .background(RoundedRectangle(cornerRadius: 6).fill(Color.primary.opacity(isApplyHovered ? 0.1 : 0)))
                     .onContinuousHover { phase in
                         if case .active = phase { isApplyHovered = true } else { isApplyHovered = false }
                     }
@@ -56,11 +57,12 @@ struct PendingJobRow: View {
                         Image(systemName: "xmark")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 7)
+                            .background(RoundedRectangle(cornerRadius: 6).fill(Color.primary.opacity(isDisregardHovered ? 0.1 : 0)))
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 7)
-                    .background(RoundedRectangle(cornerRadius: 6).fill(Color.primary.opacity(isDisregardHovered ? 0.1 : 0)))
                     .onContinuousHover { phase in
                         if case .active = phase { isDisregardHovered = true } else { isDisregardHovered = false }
                     }
