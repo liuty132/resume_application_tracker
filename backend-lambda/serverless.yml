@@ -1,0 +1,116 @@
+service: apptracker-backend
+
+frameworkVersion: '3'
+
+provider:
+  name: aws
+  runtime: nodejs20.x
+  region: us-east-1
+  memorySize: 512
+  timeout: 30
+  environment:
+    DB_HOST: ${ssm:/apptracker/db_host}
+    DB_PORT: ${ssm:/apptracker/db_port}
+    DB_NAME: ${ssm:/apptracker/db_name}
+    DB_USER: ${ssm:/apptracker/db_user}
+    DB_PASSWORD: ${ssm:/apptracker/db_password}
+    S3_BUCKET: ${ssm:/apptracker/s3_bucket}
+    FIREBASE_PROJECT_ID: ${ssm:/apptracker/firebase_project_id}
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - s3:GetObject
+        - s3:PutObject
+      Resource:
+        - !Sub 'arn:aws:s3:::${S3Bucket}/*'
+    - Effect: Allow
+      Action:
+        - ssm:GetParameter
+      Resource: 'arn:aws:ssm:${aws:region}:${aws:accountId}:parameter/apptracker/*'
+  vpc:
+    securityGroupIds:
+      - ${ssm:/apptracker/lambda_sg}
+    subnetIds:
+      - ${ssm:/apptracker/lambda_subnet_1}
+      - ${ssm:/apptracker/lambda_subnet_2}
+
+functions:
+  presign:
+    handler: src/handlers/presign.handler
+    events:
+      - http:
+          path: presign
+          method: get
+          cors: true
+          authorizer:
+            type: token
+            identitySource: method.request.header.Authorization
+            validationExpression: '^Bearer [-0-9a-zA-z\.]*$'
+
+  postJob:
+    handler: src/handlers/postJob.handler
+    events:
+      - http:
+          path: jobs
+          method: post
+          cors: true
+          authorizer:
+            type: token
+            identitySource: method.request.header.Authorization
+            validationExpression: '^Bearer [-0-9a-zA-z\.]*$'
+
+  getJobs:
+    handler: src/handlers/getJobs.handler
+    events:
+      - http:
+          path: jobs
+          method: get
+          cors: true
+          authorizer:
+            type: token
+            identitySource: method.request.header.Authorization
+            validationExpression: '^Bearer [-0-9a-zA-z\.]*$'
+
+  getTodayCount:
+    handler: src/handlers/getTodayCount.handler
+    events:
+      - http:
+          path: jobs/today-count
+          method: get
+          cors: true
+          authorizer:
+            type: token
+            identitySource: method.request.header.Authorization
+            validationExpression: '^Bearer [-0-9a-zA-z\.]*$'
+
+plugins:
+  - serverless-plugin-typescript
+  - serverless-offline
+
+resources:
+  Resources:
+    S3Bucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: apptracker-html-snapshots-${aws:accountId}
+        VersioningConfiguration:
+          Status: Enabled
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+        PublicAccessBlockConfiguration:
+          BlockPublicAcls: true
+          BlockPublicPolicy: true
+          IgnorePublicAcls: true
+          RestrictPublicBuckets: true
+        LifecycleConfiguration:
+          Rules:
+            - Id: DeleteOldVersions
+              Status: Enabled
+              NoncurrentVersionExpirationInDays: 180
+
+outputs:
+  S3BucketName:
+    Value: !Ref S3Bucket
+  ApiEndpoint:
+    Value: !Sub 'https://${ApiGatewayRestApi}.execute-api.${AWS:Region}.amazonaws.com/dev'

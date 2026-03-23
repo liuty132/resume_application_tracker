@@ -1,0 +1,31 @@
+{
+  "name": "jobpulse-lambda",
+  "version": "1.0.0",
+  "description": "JobPulse Lambda backend for job scraping and metadata extraction",
+  "main": "dist/index.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "deploy": "serverless deploy",
+    "offline": "serverless offline start"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.500.0",
+    "@aws-sdk/s3-request-presigner": "^3.500.0",
+    "@aws-sdk/client-ssm": "^3.500.0",
+    "cheerio": "^1.0.0-rc.12",
+    "pg": "^8.11.0",
+    "drizzle-orm": "^0.29.0",
+    "firebase-admin": "^12.0.0"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.0",
+    "@types/node": "^20.0.0",
+    "@types/pg": "^8.11.0",
+    "typescript": "^5.3.0",
+    "serverless": "^3.38.0",
+    "serverless-offline": "^13.3.0",
+    "serverless-plugin-typescript": "^2.1.5"
+  }
+}
