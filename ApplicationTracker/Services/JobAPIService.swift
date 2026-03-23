@@ -50,16 +50,21 @@ actor JobAPIService {
     ///   - modelContext: The SwiftData context for persisting status changes.
     ///   - currentUserID: The authenticated user's UID, used to locate disk-cached HTML.
     func applyJob(_ job: PendingJob, modelContext: ModelContext, currentUserID: String?) async throws {
+        // Read PendingJob properties on the MainActor via isolated helper functions.
+        // PendingJob is a SwiftData @Model and does not conform to Sendable, so it must
+        // not be captured inside @Sendable closures (e.g. MainActor.run { } blocks).
+        // Using @MainActor-isolated free functions lets us touch the model object
+        // only on the MainActor without crossing a @Sendable closure boundary.
+        let jobURL = await readJobURL(job)
+        let cachedPath = await readJobCachedHTMLPath(job)
+        let jobCompany = await readJobCompany(job)
+        let jobTitle = await readJobTitle(job)
+
         do {
             // Step 1: Get presigned S3 upload URL
             let presignResp = try await getPresignedURL()
 
             // Step 2: Resolve HTML — use disk cache if available, otherwise fetch live.
-            // Read job properties on MainActor since PendingJob is a SwiftData @Model.
-            let (jobURL, cachedPath) = await MainActor.run {
-                (job.url, job.cachedHTMLPath)
-            }
-
             // Attempt to read from disk cache; fall back to live fetch on any failure.
             let html: String = try await resolveHTML(jobURL: jobURL, cachedPath: cachedPath)
 
@@ -68,23 +73,49 @@ actor JobAPIService {
             try await uploadHTMLToS3(html: html, presignedURL: presignResp.uploadURL)
 
             // Step 4: Call Lambda to extract metadata and save to RDS
-            try await postJobToRDS(url: jobURL, s3Key: presignResp.s3Key)
+            try await postJobToRDS(url: jobURL, s3Key: presignResp.s3Key, company: jobCompany, title: jobTitle)
 
             // Step 5: On success, clear the disk cache and update job status.
-            await MainActor.run {
-                if let cachePath = job.cachedHTMLPath {
-                    try? FileManager.default.removeItem(atPath: cachePath)
-                }
-                job.cachedHTMLPath = nil
-                job.status = .applied
-            }
+            await markJobApplied(job, cachedPath: cachedPath)
         } catch {
             // Revert status on failure
-            await MainActor.run {
-                job.status = .pending
-            }
+            await markJobPending(job)
             throw error
         }
+    }
+
+    // MARK: - MainActor helpers for PendingJob access
+
+    // These @MainActor-isolated functions allow reading and mutating a PendingJob
+    // (a SwiftData @Model that is not Sendable) without capturing it inside a
+    // @Sendable closure such as MainActor.run { }.
+
+    @MainActor private func readJobURL(_ job: PendingJob) -> String {
+        job.url
+    }
+
+    @MainActor private func readJobCachedHTMLPath(_ job: PendingJob) -> String? {
+        job.cachedHTMLPath
+    }
+
+    @MainActor private func readJobCompany(_ job: PendingJob) -> String? {
+        job.company
+    }
+
+    @MainActor private func readJobTitle(_ job: PendingJob) -> String? {
+        job.jobTitle
+    }
+
+    @MainActor private func markJobApplied(_ job: PendingJob, cachedPath: String?) {
+        if let cachePath = cachedPath {
+            try? FileManager.default.removeItem(atPath: cachePath)
+        }
+        job.cachedHTMLPath = nil
+        job.status = .applied
+    }
+
+    @MainActor private func markJobPending(_ job: PendingJob) {
+        job.status = .pending
     }
 
     // MARK: - GET /jobs
@@ -225,7 +256,7 @@ actor JobAPIService {
 
     // MARK: - Step 4: Post to Lambda for extraction
 
-    private func postJobToRDS(url: String, s3Key: String) async throws {
+    private func postJobToRDS(url: String, s3Key: String, company: String?, title: String?) async throws {
         let token = try await AuthService.shared.getValidToken()
 
         var request = URLRequest(url: baseURL.appendingPathComponent("jobs"))
@@ -234,7 +265,7 @@ actor JobAPIService {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.timeoutInterval = 10
 
-        let body = PostJobRequest(url: url, s3Key: s3Key)
+        let body = PostJobRequest(url: url, s3Key: s3Key, company: company, title: title)
         request.httpBody = try JSONEncoder().encode(body)
 
         let (data, response) = try await session.data(for: request)
@@ -252,5 +283,7 @@ actor JobAPIService {
     private struct PostJobRequest: Encodable {
         let url: String
         let s3Key: String
+        let company: String?
+        let title: String?
     }
 }

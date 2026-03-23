@@ -6,15 +6,14 @@ struct PendingJobRow: View {
     @Environment(\.modelContext) var modelContext
     @Environment(AppState.self) var appState
     @State private var isHovered = false
+    @State private var isApplyHovered = false
+    @State private var isDisregardHovered = false
 
     var body: some View {
         HStack(alignment: .center, spacing: 10) {
-            // Status indicator dot
-            statusDot
-
             // Job info
             VStack(alignment: .leading, spacing: 2) {
-                Text(hostName)
+                Text(displayTitle)
                     .font(.system(size: 13, weight: .semibold))
                     .lineLimit(1)
                 Text(job.url)
@@ -42,31 +41,38 @@ struct PendingJobRow: View {
                         Label("Apply", systemImage: "checkmark.circle.fill")
                             .font(.caption2)
                             .labelStyle(.titleAndIcon)
+                            .foregroundStyle(.green)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.green)
-                    .controlSize(.small)
+                    .buttonStyle(.plain)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 7)
+                    .background(RoundedRectangle(cornerRadius: 6).fill(Color.primary.opacity(isApplyHovered ? 0.1 : 0)))
+                    .onContinuousHover { phase in
+                        if case .active = phase { isApplyHovered = true } else { isApplyHovered = false }
+                    }
                     .help("Apply for this job")
 
                     Button(action: disregardJob) {
                         Image(systemName: "xmark")
                             .font(.caption2)
+                            .foregroundStyle(.secondary)
                     }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
+                    .buttonStyle(.plain)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 7)
+                    .background(RoundedRectangle(cornerRadius: 6).fill(Color.primary.opacity(isDisregardHovered ? 0.1 : 0)))
+                    .onContinuousHover { phase in
+                        if case .active = phase { isDisregardHovered = true } else { isDisregardHovered = false }
+                    }
                     .help("Disregard this job")
                 }
             }
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, 14)
         .padding(.vertical, 8)
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(isHovered
-                    ? Color(.controlBackgroundColor).opacity(0.8)
-                    : Color(.controlBackgroundColor).opacity(0.5)
-                )
-        )
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.primary.opacity(isHovered ? 0.07 : 0))
+        .contentShape(Rectangle())
         .onContinuousHover { phase in
             switch phase {
             case .active: isHovered = true
@@ -75,33 +81,20 @@ struct PendingJobRow: View {
         }
     }
 
-    // MARK: - Subviews
-
-    private var statusDot: some View {
-        Circle()
-            .fill(statusColor)
-            .frame(width: 8, height: 8)
-            .overlay(
-                Circle()
-                    .strokeBorder(statusColor.opacity(0.4), lineWidth: 2)
-                    .frame(width: 14, height: 14)
-            )
-    }
-
     // MARK: - Helpers
 
-    private var hostName: String {
-        if let url = URL(string: job.url), let host = url.host {
-            return host.replacingOccurrences(of: "www.", with: "")
-        }
-        return "Job"
-    }
-
-    private var statusColor: Color {
-        switch job.status {
-        case .pending:  return .orange
-        case .applying: return .blue
-        case .applied:  return .green
+    private var displayTitle: String {
+        let company = job.company
+        let title = job.jobTitle
+        switch (company, title) {
+        case let (c?, t?): return "\(c) — \(t)"
+        case let (c?, nil): return c
+        case let (nil, t?): return t
+        default:
+            if let url = URL(string: job.url), let host = url.host {
+                return host.replacingOccurrences(of: "www.", with: "")
+            }
+            return "Job"
         }
     }
 
@@ -141,8 +134,8 @@ struct PendingJobRow: View {
 }
 
 #Preview {
-    @Previewable @State var job = PendingJob(url: "https://jobs.greenhouse.io/example/engineer")
-    return PendingJobRow(job: job)
+    @Previewable @State var job = PendingJob(url: "https://jobs.greenhouse.io/example/engineer", userID: "preview-user")
+    PendingJobRow(job: job)
         .modelContainer(for: PendingJob.self, inMemory: true)
         .padding()
         .frame(width: 380)

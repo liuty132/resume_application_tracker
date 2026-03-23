@@ -8,6 +8,8 @@ import { jobs } from '../db/schema';
 interface PostJobRequest {
   url: string;
   s3Key: string;
+  company?: string;
+  title?: string;
 }
 
 export const handler: APIGatewayProxyHandler = async (event) => {
@@ -16,7 +18,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
     const userId = await verifyFirebaseToken(event.headers.Authorization);
 
     // Parse request body
-    const { url, s3Key } = JSON.parse(event.body || '{}') as PostJobRequest;
+    const { url, s3Key, company, title } = JSON.parse(event.body || '{}') as PostJobRequest;
 
     if (!url || !s3Key) {
       return {
@@ -26,11 +28,12 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       };
     }
 
-    // Read HTML from S3
+    // Read HTML from S3 and extract metadata as fallback
     const html = await getHTMLFromS3(s3Key);
+    const { companyName: extractedCompany, jobTitle: extractedTitle } = extractJobMetadata(html, url);
 
-    // Extract company name and job title
-    const { companyName, jobTitle } = extractJobMetadata(html, url);
+    const companyName = company ?? extractedCompany;
+    const jobTitle = title ?? extractedTitle;
 
     // Save to RDS using Drizzle
     const db = getDb();

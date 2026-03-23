@@ -13,7 +13,10 @@ struct MenuBarView: View {
     var allJobs: [PendingJob]
 
     var pendingJobs: [PendingJob] {
-        allJobs.filter { $0.status == .pending || $0.status == .applying }
+        guard let currentUserID = appState.currentUserID else { return [] }
+        return allJobs.filter {
+            $0.userID == currentUserID && ($0.status == .pending || $0.status == .applying)
+        }
     }
 
     var body: some View {
@@ -21,9 +24,9 @@ struct MenuBarView: View {
             loginView
                 .onAppear {
                     // Auto-login if user has a saved session, and populate UID.
-                    if AuthService.shared.isUserLoggedIn() {
-                        appState.isLoggedIn = true
-                        Task {
+                    Task {
+                        if await AuthService.shared.isUserLoggedIn() {
+                            appState.isLoggedIn = true
                             let uid = await AuthService.shared.getCurrentUser()?.uid
                             await MainActor.run { appState.currentUserID = uid }
                         }
@@ -113,13 +116,14 @@ struct MenuBarView: View {
                 emptyState
             } else {
                 ScrollView {
-                    LazyVStack(spacing: 6) {
-                        ForEach(pendingJobs) { job in
+                    LazyVStack(spacing: 0) {
+                        ForEach(Array(pendingJobs.enumerated()), id: \.element.id) { index, job in
                             PendingJobRow(job: job)
+                            if index < pendingJobs.count - 1 {
+                                Divider().padding(.horizontal, 14)
+                            }
                         }
                     }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 8)
                 }
                 .frame(maxHeight: 300)
                 .scrollBounceBehavior(.always)
@@ -241,7 +245,7 @@ struct MenuBarView: View {
     private func logout() {
         Task {
             do {
-                try AuthService.shared.signOut()
+                try await AuthService.shared.signOut()
                 await MainActor.run {
                     appState.isLoggedIn = false
                     appState.currentUserID = nil
@@ -326,13 +330,9 @@ private struct ShadeStyle: ButtonStyle {
             .padding(.horizontal, 4)
             .background(
                 RoundedRectangle(cornerRadius: 8)
-                    .fill(
-                        configuration.isPressed
-                            ? Color(.controlBackgroundColor).opacity(0.9)
-                            : isHovered
-                                ? Color(.controlBackgroundColor).opacity(0.8)
-                                : Color(.controlBackgroundColor).opacity(0.5)
-                    )
+                    .fill(Color.primary.opacity(
+                        configuration.isPressed ? 0.12 : isHovered ? 0.07 : 0
+                    ))
             )
             .onContinuousHover { phase in
                 switch phase {

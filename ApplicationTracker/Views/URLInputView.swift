@@ -5,6 +5,8 @@ struct URLInputView: View {
     @Environment(AppState.self) var appState
     @Environment(\.modelContext) var modelContext
     @State private var urlError: String?
+    @State private var company: String = ""
+    @State private var jobTitle: String = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -19,6 +21,17 @@ struct URLInputView: View {
             .onSubmit(addJob)
             .font(.body)
             .controlSize(.large)
+
+            HStack(spacing: 8) {
+                TextField("Company", text: $company)
+                    .textFieldStyle(.roundedBorder)
+                    .controlSize(.large)
+                    .onSubmit(addJob)
+                TextField("Job title", text: $jobTitle)
+                    .textFieldStyle(.roundedBorder)
+                    .controlSize(.large)
+                    .onSubmit(addJob)
+            }
 
             if let error = urlError {
                 VStack(alignment: .leading, spacing: 4) {
@@ -39,6 +52,7 @@ struct URLInputView: View {
     }
 
     private func addJob() {
+//        print("userID at submit time: \(String(describing: appState.currentUserID))")
         let trimmed = appState.urlInput.trimmingCharacters(in: .whitespaces)
 
         guard !trimmed.isEmpty else {
@@ -64,22 +78,27 @@ struct URLInputView: View {
             return
         }
 
-        let job = PendingJob(url: urlString)
+        guard let userID = appState.currentUserID else {
+            urlError = "Not logged in"
+            return
+        }
+
+        let job = PendingJob(url: urlString, userID: userID)
         modelContext.insert(job)
+        job.company = company.isEmpty ? nil : company
+        job.jobTitle = jobTitle.isEmpty ? nil : jobTitle
         appState.urlInput = ""
+        company = ""
+        jobTitle = ""
         urlError = nil
 
         do {
             try modelContext.save()
 
-            // Kick off background HTML pre-fetch if a user ID is available.
+            // Kick off background HTML pre-fetch.
             // The result is written back to job.cachedHTMLPath so applyJob() can
             // skip a live fetch later. We use a detached Task to avoid blocking
             // the UI and to escape the MainActor context for the actor hop.
-            let userID = appState.currentUserID
-            guard let userID else {
-                return
-            }
 
             let jobID = job.id
             let jobURL = job.url
@@ -97,6 +116,7 @@ struct URLInputView: View {
                         try? modelContext.save()
                     }
                 } catch {
+                    print("[URLInputView] Pre-fetch failed: \(error)")
                     // Pre-fetch failed; applyJob() will fall back to a live fetch.
                 }
             }

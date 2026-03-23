@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import WebKit
 
@@ -27,7 +28,7 @@ final class WebViewFetcher: NSObject, WKNavigationDelegate {
 
     private lazy var webView: WKWebView = {
         let config = WKWebViewConfiguration()
-        config.websiteDataStore = .default() // persistent cookies
+        config.websiteDataStore = .nonPersistent()
         let wv = WKWebView(frame: .zero, configuration: config)
         wv.navigationDelegate = self
         return wv
@@ -35,9 +36,18 @@ final class WebViewFetcher: NSObject, WKNavigationDelegate {
 
     private var continuation: CheckedContinuation<String, Error>?
     private var navigationTimer: Timer?
+    private var offscreenWindow: NSWindow?
 
     override init() {
         super.init()
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 1, height: 1),
+            styleMask: [],
+            backing: .buffered,
+            defer: true
+        )
+        window.contentView = webView
+        offscreenWindow = window
     }
 
     // MARK: - Disk Cache Helpers
@@ -85,12 +95,15 @@ final class WebViewFetcher: NSObject, WKNavigationDelegate {
             self.continuation = continuation
 
             // Set a timeout
-            self.navigationTimer = Timer.scheduledTimer(withTimeInterval: 20, repeats: false) { _ in
-                if self.continuation != nil {
-                    self.continuation?.resume(throwing: FetchError.fetchTimeout)
-                    self.continuation = nil
+            self.navigationTimer = Timer.scheduledTimer(withTimeInterval: 20, repeats: false) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    if self.continuation != nil {
+                        self.continuation?.resume(throwing: FetchError.fetchTimeout)
+                        self.continuation = nil
+                    }
+                    self.navigationTimer = nil
                 }
-                self.navigationTimer = nil
             }
 
             let request = URLRequest(url: url, timeoutInterval: 20)
